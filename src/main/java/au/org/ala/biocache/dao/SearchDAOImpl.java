@@ -1650,7 +1650,7 @@ public class SearchDAOImpl implements SearchDAO {
     @Inject
     CacheManager cacheManager;
 
-    @Cacheable("legendCache")
+    @Cacheable(value = "legendCache", keyGenerator = "dataRoleCacheKeyGenerator")
     public List<LegendItem> getLegend(SpatialSearchRequestDTO searchParams, String facetField, String[] cutpoints) throws Exception {
         return getLegend(searchParams, facetField, cutpoints, false);
     }
@@ -1670,7 +1670,7 @@ public class SearchDAOImpl implements SearchDAO {
      * @return
      * @throws Exception
      */
-    @Cacheable("legendCache")
+    @Cacheable(value = "legendCache", keyGenerator = "dataRoleCacheKeyGenerator")
     public List<LegendItem> getLegend(SpatialSearchRequestDTO searchParams, String facetField, String[] cutpoints, boolean skipI18n) throws Exception {
         List<LegendItem> legend = new ArrayList<LegendItem>();
 
@@ -2327,7 +2327,7 @@ public class SearchDAOImpl implements SearchDAO {
     /**
      * @see au.org.ala.biocache.dao.SearchDAO#getColours
      */
-    @Cacheable("getColours")
+    @Cacheable(value = "getColours", keyGenerator = "dataRoleCacheKeyGenerator")
     public List<LegendItem> getColours(SpatialSearchRequestDTO request, String colourMode) throws Exception {
         List<LegendItem> colours = new ArrayList<LegendItem>();
         if (colourMode.equals("grid")) {
