@@ -1003,7 +1003,8 @@ public class SolrIndexDAOImpl implements IndexDAO {
         query.set("fl", "id");
 
         try {
-            QueryResponse response = solrClient.query(query);
+            // query() applies the RBAC filter; calling solrClient directly would count hidden records
+            QueryResponse response = query(query);
             return response.getResults().getNumFound();
         } catch (Exception e) {
             throw new RuntimeException("Error executing count query", e);
@@ -1277,6 +1278,8 @@ public class SolrIndexDAOImpl implements IndexDAO {
             }
         }
 
+        appendRbacFilter(cexpr);
+
         cexpr.append(", buckets=\"").append(fieldMappingUtil.translateFieldName(facetName)).append("\"");
 
         // translate the 'count' and 'index' facet.sort values for streaming facet()
@@ -1334,6 +1337,7 @@ public class SolrIndexDAOImpl implements IndexDAO {
                 cexpr.append(", fq=\"").append(escapeDoubleQuote(fieldMappingUtil.translateQueryFields(fq))).append("\"");
             }
         }
+        appendRbacFilter(cexpr);
         cexpr.append(", buckets=\"").append(translatedFacetName).append("\"").
                 append(", bucketSorts=\"").append(translatedFacetName).append(" asc\"").
                 append(", bucketSizeLimit=\"-1\")").    //close facet
@@ -1347,6 +1351,7 @@ public class SolrIndexDAOImpl implements IndexDAO {
                 cexpr.append(", fq=\"").append(escapeDoubleQuote(fieldMappingUtil.translateQueryFields(fq))).append("\"");
             }
         }
+        appendRbacFilter(cexpr);
         cexpr.append(", buckets=\"").append(translatedFacetName).append("\"").
                 append(", bucketSorts=\"").append(translatedFacetName).append(" asc\"").
                 append(", bucketSizeLimit=\"-1\")").    //close facet
@@ -1370,31 +1375,37 @@ public class SolrIndexDAOImpl implements IndexDAO {
         return input.replaceAll("\"", "\\\\\"");
     }
 
+    /**
+     * Streaming facet() expressions carry their own q/fq, so the RBAC filter has to go inside the
+     * expression; an fq on the /stream request itself is ignored.
+     */
+    private void appendRbacFilter(StringBuilder cexpr) {
+        if (rbacEnabled) {
+            cexpr.append(", fq=\"").append(escapeDoubleQuote(rbacFilterQuery())).append("\"");
+        }
+    }
+
     private ModifiableSolrParams addRbacFilter(SolrParams query) {
         var newParams = new ModifiableSolrParams(query);
+        newParams.add("fq", rbacFilterQuery());
+        return newParams;
+    }
 
+    String rbacFilterQuery() {
         var auth = SecurityContextHolder.getContext().getAuthentication();
-        var roles = "";
         if (auth != null) {
-            roles = auth.getAuthorities().stream()
+            var roles = auth.getAuthorities().stream()
                     .map(GrantedAuthority::getAuthority)
                     .filter(role -> role.startsWith(rolePrefix))
                     .map(role -> role.substring(rolePrefix.length()))
                     .collect(Collectors.joining(" "));
             if (!roles.isEmpty()) {
-                newParams.add("fq",
-                        "(*:* NOT dynamicProperties_rbac:*) " +
-                                "OR (dynamicProperties_rbac:true AND dynamicProperties_rbac_allowed:(" + roles + ")) " +
-                                "OR (dynamicProperties_rbac:false AND !dynamicProperties_rbac_allowed:(" + roles + "))"
-                );
-                return newParams;
+                return "(*:* NOT dynamicProperties_rbac:*) " +
+                        "OR (dynamicProperties_rbac:true AND dynamicProperties_rbac_allowed:(" + roles + ")) " +
+                        "OR (dynamicProperties_rbac:false AND !dynamicProperties_rbac_allowed:(" + roles + "))";
             }
         }
 
-        newParams.add("fq",
-                "(*:* NOT dynamicProperties_rbac:*) OR dynamicProperties_rbac:false"
-        );
-
-        return newParams;
+        return "(*:* NOT dynamicProperties_rbac:*) OR dynamicProperties_rbac:false";
     }
 }
